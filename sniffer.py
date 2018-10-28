@@ -1,26 +1,36 @@
-#!/usr/bin/python
-from scapy.all import *
 import re
+import pprint
+import sys
 
-stars = lambda n: "*" * n
+from scapy.all import sniff
 
-def GET_print(packet):
-    data = '\n'.join(packet.sprintf('%Raw.load%').split(r'\r\n'))
-    # p = re.compile(r'access_token=')
-    # p.findall(data)
-    index = data.find('access_token=')
-    print('COOKIE', data[index:index+40])
-    return data[index:index+40] if index != -1 else None
+import scapy_http.http
+
+cookies_pattern = ['access_token=\S*']
+
+def print_cookie(packet):
+    if 'Cookie' in packet.getlayer(scapy_http.http.HTTPRequest).fields:
+        for pattern in cookies_pattern:
+            res = re.search(pattern, packet.getlayer(scapy_http.http.HTTPRequest).fields['Cookie'])
+            if res is not None:
+                return res.group()
+    return None
+
+def print_packet(packet):
+    pprint.pprint(packet.getlayer(scapy_http.http.HTTPRequest).fields, indent=2)
+    return None
 
 
-    # return data
-    # return "\n".join((
-    #     stars(40) + 'GET PACKET' + stars(40),
-    #     "\n".join(packet.sprintf("{Raw:%Raw.load%}").split(r"\r\n")),
-    #     stars(90)))
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print('USAGE: {} interface'.format(sys.argv[0]))
+        exit(1)
+    interface = sys.argv[1]
 
-sniff(
-    iface='enp2s0',
-    prn=GET_print,
-    lfilter=lambda p: 'GET' in str(p) and 'Cookie' in str(p),
-    filter='tcp port 80')
+    print('Started...')
+    sniff(iface=interface,
+          promisc=False,
+          filter='tcp and port 80',
+          lfilter=lambda x: x.haslayer(scapy_http.http.HTTPRequest),
+          prn=print_cookie
+    )
